@@ -31,18 +31,27 @@ namespace WebApp.Controllers
         [HttpPost]
         public IActionResult TakeSnapshot([FromForm]SnapshotRequest request)
         {
+            UpdateState(request.Name, request.Address);
+            if (string.IsNullOrEmpty(request.Address) || string.IsNullOrEmpty(request.Name) ||
+                request.StartBlock < 0 || request.EndBlock < 0 || request.StartBlock > request.EndBlock)
+                return View("Index");
+            _tokenSnapshotUnit.Run(request.StartBlock, request.EndBlock, request.Address, null, null);
             return View(request);
         }
 
         [HttpPost]
         public async Task<IActionResult> LoadSnapshot([FromForm] SnapshotRequest request)
         {
+            var snapshot = await _snapshotDataAccessObject.GetSnapshot(request.Name);
+            if (snapshot == null) return View("Index");
+            UpdateState(request.Name, snapshot.Address);
+            _tokenSnapshotUnit.Run(request.StartBlock, request.EndBlock, snapshot.Address, snapshot.Blocks, snapshot.State);
             return View("TakeSnapshot", request);
         }
 
         public int BlocksProcessed()
         {
-            return 3;
+            return _tokenSnapshotUnit.GetProcessedBlocks().Count(x => x.IsCompleted);
         }
 
         public async Task<AddressInfo> GetAddressInfo(string address)
@@ -68,7 +77,7 @@ namespace WebApp.Controllers
 
         public bool IsSnapshotRunning()
         {
-            return false;
+            return _tokenSnapshotUnit.IsSnapshotRunning();
         }
 
         public TokenTradesViewModel GetTokenTransfers()
@@ -111,13 +120,48 @@ namespace WebApp.Controllers
         public ProcessedBlocksViewModel GetProcessedBlocks()
         {
             var result = new ProcessedBlocksViewModel();
-            result.Blocks.Add(new ProcessedBlockViewModel() { Block = 1, Transactions = 2 });
-            result.Blocks.Add(new ProcessedBlockViewModel() { Block = 2, Transactions = 0 });
-            result.Blocks.Add(new ProcessedBlockViewModel() { Block = 3, Transactions = 1 });
-            result.Blocks.Add(new ProcessedBlockViewModel() { Block = 4, Transactions = 0 });
-            result.Blocks.Add(new ProcessedBlockViewModel() { Block = 5, Transactions = 5 });
+            var blocks = _tokenSnapshotUnit.GetBlocks().OrderBy(x => x.Number).ToArray();
+
+            foreach(var block in blocks)
+            {
+                result.Blocks.Add(new ProcessedBlockViewModel() { Block = block.Number, Transactions = block.Transactions.Count});
+            }
             return result;
         }
-        
+
+        public void UpdateState(string name, string address)
+        {
+            Task.Run(async () =>
+            {
+                var snapshot = await _snapshotDataAccessObject.GetSnapshot(name);
+                if (snapshot == null)
+                {
+                    var id = await _snapshotDataAccessObject.CreateSnapshot(new Snapshot<SnapshotBlock, List<ProcessedBlock>>() { Name = name, Address = address });
+                    snapshot = new Snapshot<SnapshotBlock, List<ProcessedBlock>>() { Id = id, Name = name, Address = address };
+                }
+
+                do
+                {
+                    try
+                    {
+                        _logger.LogInformation("Starting persistence update");
+                        var processedBlocks = _tokenSnapshotUnit.GetProcessedBlocks().ToList();
+                        var blocks = _tokenSnapshotUnit.GetBlocks().ToList();
+                        snapshot.State = processedBlocks;
+                        snapshot.Blocks = blocks;
+                        await _snapshotDataAccessObject.UpdateSnapshot(snapshot);
+                        _logger.LogInformation("State persisted");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("Error. " + ex.Message);
+                    }
+
+                    Thread.Sleep(20000);
+                } while (IsSnapshotRunning());
+            });
+
+
+        }
     }
 }
