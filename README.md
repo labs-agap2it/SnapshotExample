@@ -19,7 +19,17 @@ To scan
 
 ## Releases
 
-If you want to start from a specific step, pick the right tag:
+If you want to start from a specific step, pick the right tag/branch:
+
+**Initial Release** - If you are starting from the second article
+
+**Address Validators** - If you've already set up the address validators
+
+**Base Snapshot** - If you have created the base snapshot
+
+**Token Snapshot** - If you have created a token snapshot unit
+
+**Final** - If you want the finished result
 
 
 ## Additional content
