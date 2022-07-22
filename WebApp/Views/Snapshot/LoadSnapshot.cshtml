@@ -1,0 +1,65 @@
+﻿@model SnapshotRequest
+
+<div class="w-75 mx-auto">
+    <h4>Current Snapshot</h4>
+    <div class="mb-2 mt-5">
+        <p class="fw-bold">Contract</p>
+    </div>
+    <div class="row mb-4">
+            <label for="name" class="form-label fw-lighter">Name</label>
+            <div class="col-12 col-md-8 col-lg-7 col-xl-6">
+                <input asp-for="Name" value="Snapshot1" name="name" id="name" class="form-control" type="text"/>
+            </div> 
+        </div>
+     <div class="row mb-4">
+        <label for="address" class="form-label fw-lighter">Address</label>
+        <div class="col-12 col-md-8 col-lg-7 col-xl-6">
+            <input disabled="disabled" asp-for="Address" value="0xbe7605284d66cedd604c7a7c15b79fa605be5662" name="address" id="address" class="form-control" type="text"/>
+        </div> 
+        <div>
+            <span id="isValidAddress"></span>
+            <span id="isContract"></span>
+            <span id="isToken"></span>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12 col-md-12 col-xl-6">
+            <p class="fw-bold">Blocks</p>
+            <div class="row">
+                <div class="col-12 col-md-12 col-xl-6 mb-2">
+                    <label for="startBlock" class="form-label fw-lighter">Start at</label>
+                    <input disabled="disabled" value="19600586" asp-for="StartBlock" name="startBlock" class="form-control" type="number"/>
+                </div>
+                <div class="col-12 col-md-12 col-xl-6 mb-2">
+                    <label for="endBlock" class="form-label fw-lighter">End at</label>
+                    <input disabled="disabled" value="19601245" asp-for="EndBlock" name="endBlock" class="form-control" type="number"/>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    function getAddressInfo()
+        {
+            var val = $("#address").val();
+            console.log(val);
+            $.ajax({
+                type: "GET",
+                url: "@Url.Action("GetAddressInfo")",
+                data: {"address":val},
+                dataType: "text",
+                success: function (data) {
+                   var tokenInfo = JSON.parse(data);
+                   $("#isValidAddress")[0].innerHTML = tokenInfo.isAddress ? "<span class='text-success'>✔</span><span> Is a valid address</span>":"<span class='text-error'>❌</span><span> Is not a valid address</span>";
+                   $("#isContract")[0].innerHTML = tokenInfo.isContract ? "<span class='text-success'>✔</span><span> Is a contract</span>":"<span class='text-error'>❌</span><span> Is not a contract</span>";
+                   $("#isToken")[0].innerHTML = tokenInfo.isToken ? "<span class='text-success'>✔</span><span> Is a token</span>":"<span class='text-error'>❌</span><span> Is not a token</span>";
+                },
+                error: function (req, status, error) {}
+            }); 
+        }
+    
+
+    getAddressInfo();
+</script>

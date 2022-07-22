@@ -1,0 +1,558 @@
+﻿@model SnapshotRequest
+
+<div class="w-75 mx-auto">
+    <h4>Current Snapshot</h4>
+    <div class="mb-2 mt-5">
+        <p class="fw-bold">Contract</p>
+    </div>
+     <div class="row mb-4">
+        <label for="address" class="form-label fw-lighter">Address</label>
+        <div class="col-12 col-md-8 col-lg-7 col-xl-6">
+            <input disabled="disabled" asp-for="Address" value="0xbe7605284d66cedd604c7a7c15b79fa605be5662" name="address" id="address" class="form-control" type="text"/>
+        </div> 
+        <div>
+            <span id="isValidAddress"></span>
+            <span id="isContract"></span>
+            <span id="isToken"></span>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12 col-md-12 col-xl-6">
+            <p class="fw-bold">Blocks</p>
+            <div class="row">
+                <div class="col-12 col-md-12 col-xl-6 mb-2">
+                    <label for="startBlock" class="form-label fw-lighter">Start at</label>
+                    <input disabled="disabled" value="19600586" asp-for="StartBlock" name="startBlock" class="form-control" type="number"/>
+                </div>
+                <div class="col-12 col-md-12 col-xl-6 mb-2">
+                    <label for="endBlock" class="form-label fw-lighter">End at</label>
+                    <input disabled="disabled" value="19601245" asp-for="EndBlock" name="endBlock" class="form-control" type="number"/>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div>
+        <span id="status"></span>
+        <span id="blocksFound"></span>
+    </div>
+
+    <div class="container">
+        <ul class="nav nav-tabs">
+            <li class="active"><a data-toggle="tab" href="#blocks">Blocks</a></li>
+            <li><a data-toggle="tab" href="#holders">Holders</a></li>
+            <li><a data-toggle="tab" href="#transfers">Transfers</a></li>
+        </ul>
+        <div class="tab-content">
+            <div id="blocks" class="tab-pane fade in active">
+                <div class="pt-3 w-100">
+                    <button id="lineButton" class="btn btn-info float-end">Switch to Line Chart</button>
+                </div>
+                <div id="blockTableView" class="pt-3 w-100">
+                    <table class="table mt-4">
+                        <thead>
+                            <tr>
+                                <td>Block #</td>
+                                <td>Transactions</td>
+                            </tr>
+                        </thead>
+                        <tbody id="blocksTableBody"></tbody>
+                    </table>
+                </div>
+                
+                <div id="lineChartView" class="d-none">
+                    
+                </div>
+            </div>
+            <div id="holders" class="tab-pane fade">
+                <div class="pt-3 w-100">
+                    <button id="bubbleButton" class="btn btn-info float-end" onclick="switchToBubbleChart">Switch to Bubble Chart</button>
+                </div>
+                <div id="holderTableView" class="pt-3 w-100">
+                    <table class="table mt-4">
+                        <thead>
+                            <tr>
+                                <td>Address</td>
+                                <td>Amount</td>
+                            </tr>
+                        </thead>
+                        <tbody id="holdersTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="bubbleChartView" class="d-none">
+                </div>
+            </div>
+            <div id="transfers" class="tab-pane fade">
+                <div class="pt-3 w-100">
+                    <button id="networkButton" class="btn btn-info float-end" onclick="switchToNetworkChart">Switch to Network Chart</button>
+                </div>
+                <div id="transferTableView" class="w-100">
+                    <table id="transferTableView" class="table mt-4">
+                        <thead>
+                            <tr>
+                                <td>Sender</td>
+                                <td>Receiver</td>
+                                <td>Amount</td>
+                            </tr>
+                        </thead>
+                        <tbody id="transfersTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="networkChartView" class="d-none w-100" style="height:50vh">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var displayBlockChart = false;
+    var displayHolderChart = false;
+    var displayTransferChart = false;
+    var blocksProcessed, tokenHolders, tokenTransfers;
+    var lineButton = $("#lineButton")[0];
+    var bubbleButton = $("#bubbleButton")[0];
+    var networkButton = $("#networkButton")[0];
+    var blockTableView = $("#blockTableView")[0];
+    var lineChartView = $("#lineChartView")[0];
+    var holderTableView = $("#holderTableView")[0];
+    var bubbleChartView = $("#bubbleChartView")[0];
+    var transferTableView = $("#transferTableView")[0];
+    var networkChartView = $("#networkChartView")[0];
+
+    function switchSegment(switchFlag,switchButton, tableDiv, tableText, chartDiv, chartText)
+    {
+        switchButton.textContent = switchFlag? chartText : tableText;
+        if(switchFlag){
+            tableDiv.classList.add("d-none");
+            chartDiv.classList.remove("d-none");
+        }
+        else
+        {
+            chartDiv.classList.add("d-none");
+            tableDiv.classList.remove("d-none");
+        }
+    }
+
+    lineButton.onclick=()=>
+    {
+        if(blocksProcessed) drawLineChart(blocksProcessed);
+        displayBlockChart = !displayBlockChart;
+        switchSegment(displayBlockChart, lineButton, blockTableView, "Switch to Line Chart", lineChartView, "Switch to Table View")
+    };
+
+    bubbleButton.onclick=()=>
+    {
+        if(tokenHolders) drawBubbleChart(tokenHolders);
+        displayHolderChart = !displayHolderChart;
+        switchSegment(displayHolderChart, bubbleButton, holderTableView, "Switch to Bubble Chart", bubbleChartView, "Switch to Table View")
+    };
+    
+    networkButton.onclick=()=>
+    {
+        if(tokenTransfers) drawNetworkChart(tokenTransfers);
+        displayTransferChart = !displayTransferChart;
+        switchSegment(displayTransferChart, networkButton, transferTableView, "Switch to Network Chart", networkChartView, "Switch to Table View")
+    };
+
+    function callControllerAction(url, onResponse)
+    {
+        $.ajax({
+            type: "GET",
+            url: url,
+            data: {},
+            dataType: "text",
+            success: function (data) {
+               onResponse(data);
+            },
+            error: function (req, status, error) {}
+        }); 
+    }
+
+    function checkIfSnapshotIsRunning()
+    {
+        $.ajax({
+            type: "GET",
+            url: "@Url.Action("IsSnapshotRunning")",
+            data: {},
+            dataType: "text",
+            success: function (data) {
+                $("#status")[0].innerHTML = data == "true" ? "Executing. <div class='spinner-border' role='status'><span class='sr-only'>Loading...</span></div>" : "Finished execution.";
+            },
+            error: function (req, status, error) {}
+        }); 
+    }
+
+    function getBlockCount()
+    {
+        $.ajax({
+            type: "GET",
+            url: "@Url.Action("BlocksProcessed")",
+            data: {},
+            dataType: "text",
+            success: function (data) {
+                $("#blocksFound")[0].innerHTML = " " + data + "blocks found.";
+            },
+            error: function (req, status, error) {}
+        }); 
+    }
+
+     function getTokenHolders()
+    {
+        callControllerAction("@Url.Action("GetTokenHolders")",(data)=>{
+            var tokenHoldersData = JSON.parse(data);
+            var holders = tokenHoldersData.holders;
+            var rows ="";
+            holders.forEach(h => {
+                rows+="<tr>";
+                rows+="<td>"+h["address"]+"</td>"
+                rows+="<td>"+h["amount"]+"</td>"
+                rows+="</tr>";
+            });
+            var scanBody = document.getElementById("holdersTableBody");
+            scanBody.innerHTML = rows;
+            tokenHolders = holders;
+        });
+    }
+
+    function getProcessedBlocks()
+    {
+        callControllerAction("@Url.Action("GetProcessedBlocks")",(data)=>
+        {
+            var snapshot = JSON.parse(data);
+            var blocks = snapshot["blocks"];
+            var rows ="";
+            blocks.forEach(b => {
+                rows+="<tr>";
+                rows+="<td>"+b["block"]+"</td>"
+                rows+="<td>"+b["transactions"]+"</td>"
+                rows+="</tr>";
+            });
+            var scanBody = document.getElementById("blocksTableBody");
+            scanBody.innerHTML = rows;
+            blocksProcessed = blocks;
+        });
+    }
+
+     function getTokenTransfers()
+    {
+        callControllerAction("@Url.Action("GetTokenTransfers")",(data)=>{
+            var dataset = JSON.parse(data);
+            var rows ="";
+            dataset.transfers.forEach(t => {
+                var from = dataset.transferNodes.find(x => x.id == t["source"]);
+                var to = dataset.transferNodes.find(x => x.id == t["target"]);
+                rows+="<tr>";
+                rows+="<td>"+from["name"]+"</td>"
+                rows+="<td>"+to["name"]+"</td>"
+                rows+="<td>"+t["amount"]+"</td>"
+                rows+="</tr>";
+            });
+            var scanBody = document.getElementById("transfersTableBody");
+            scanBody.innerHTML = rows;
+            tokenTransfers = dataset;
+        });
+    }
+
+    function getAddressInfo()
+        {
+            var val = $("#address").val();
+            $.ajax({
+                type: "GET",
+                url: "@Url.Action("GetAddressInfo")",
+                data: {"address":val},
+                dataType: "text",
+                success: function (data) {
+                   var tokenInfo = JSON.parse(data);
+                   $("#isValidAddress")[0].innerHTML = tokenInfo.isAddress ? "<span class='text-success'>✔</span><span> Is a valid address</span>":"<span class='text-error'>❌</span><span> Is not a valid address</span>";
+                   $("#isContract")[0].innerHTML = tokenInfo.isContract ? "<span class='text-success'>✔</span><span> Is a contract</span>":"<span class='text-error'>❌</span><span> Is not a contract</span>";
+                   $("#isToken")[0].innerHTML = tokenInfo.isToken ? "<span class='text-success'>✔</span><span> Is a token</span>":"<span class='text-error'>❌</span><span> Is not a token</span>";
+                },
+                error: function (req, status, error) {}
+            }); 
+        }
+
+        function drawLineChart(dataset)
+    {
+        $("#lineChartView").empty();
+        var formatAxis = d3.format('.0f');
+
+        var margin = {top: 50, right: 50, bottom: 50, left: 50}
+              , width = 500
+              , height = 300;
+
+            var n = dataset.length;
+            var max = dataset.reduce((a,b)=>{
+                return a.transactions > b.transactions? a:b;
+            })
+
+            var minX = dataset[0].block;
+            var maxX = dataset[dataset.length-1].block;
+
+            var xScale = d3.scaleLinear()
+                .domain([minX, maxX])
+                .range([ 0, width]);
+
+            var yScale = d3.scaleLinear()
+                .domain([0, max.transactions+1]) 
+                .range([height, 0]);
+
+            var line = d3.line()
+                .x(function(d) { return xScale(d.block); })
+                .y(function(d) { return yScale(d.transactions); })
+                .curve(d3.curveMonotoneX) 
+
+
+            var svg = d3.select("#lineChartView").append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+              .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            svg.append("g")
+                .attr("class", "x axis")
+                .attr("transform", "translate(0," + height + ")")
+                .call(d3.axisBottom(xScale).tickFormat(formatAxis).ticks(5)); 
+
+            svg.append("g")
+                .attr("class", "y axis")
+                .call(d3.axisLeft(yScale).tickFormat(formatAxis).ticks(1));
+
+            svg.append("path")
+                .datum(dataset)
+                .attr("class", "line")
+                .attr("d", line);
+            console.log(max)
+
+            svg.selectAll(".dot")
+                .data(dataset)
+              .enter().append("circle")
+                .attr("class", "dot")
+                .attr("cx", function(d) { return xScale(d.block) })
+                .attr("cy", function(d) { return yScale(d.transactions) })
+                .attr("r", 5);
+    }
+
+    function drawBubbleChart(dataset)
+    {
+        var diameter = 300;
+        var color = d3.scaleOrdinal(d3.schemeCategory20);
+        dataset = {"children":dataset};
+        var bubble = d3.pack(dataset)
+            .size([diameter, diameter]);
+
+        $("#bubbleChartView").empty();
+        var svg = d3.select("#bubbleChartView")
+            .append("svg")
+            .attr("width", diameter)
+            .attr("height", diameter)
+            .attr("class", "bubble");
+
+        var nodes = d3.hierarchy(dataset)
+            .sum(function(d) { 
+                return d.amount; });
+
+        var node = svg.selectAll(".node")
+            .data(bubble(nodes).descendants())
+            .enter()
+            .filter(function(d){
+                return  !d.children
+            })
+            .append("g")
+            .attr("class", "node")
+            .attr("transform", function(d) {
+                return "translate(" + d.x + "," + d.y + ")";
+            });
+
+        node.append("title")
+            .text(function(d) {
+                return d.address + ": " + d.amount;
+            });
+
+        node.append("circle")
+            .attr("r", function(d) {
+                return d.r;
+            })
+            .style("fill", function(d,i) {
+                return color(i);
+            });
+
+        node.append("text")
+            .attr("dy", ".2em")
+            .style("text-anchor", "middle")
+            .text(function(d) {
+                return d.data.address.substring(0, d.r / 3);
+            })
+            .attr("font-size", function(d){
+                return d.r/5;
+            })
+            .attr("fill", "white");
+
+        node.append("text")
+            .attr("dy", "1.3em")
+            .style("text-anchor", "middle")
+            .text(function(d) {
+                return d.data.amount;
+            })
+            .attr("font-size", function(d){
+                return d.r/5;
+            })
+            .attr("fill", "white");
+
+        d3.select(self.frameElement)
+            .style("height", diameter + "px");
+    }
+
+    function drawNetworkChart(dataset)
+    {
+        var links = dataset.transfers;
+        var nodes = dataset.transferNodes;
+        var div = d3.select("#networkChartView");
+        $("#networkChartView").empty();
+        div.append("svg").attr("id", "networkChartSvg").attr("width", "100%").attr("height", "100%");
+        var svg = d3.select("#networkChartSvg");
+        var colors = d3.scaleOrdinal(d3.schemeCategory10);
+        var width = 500, height = 500, node, link;
+    
+        svg.append('defs').append('marker')
+        .attrs({'id':'arrowhead',
+            'viewBox':'-0 -5 10 10',
+            'refX':13,
+            'refY':0,
+            'orient':'auto',
+            'markerWidth':13,
+            'markerHeight':13,
+            'xoverflow':'visible'})
+        .append('svg:path')
+        .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+        .attr('fill', '#999')
+        .style('stroke','none');
+
+        var simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(function (d) {return d.id;}).distance(function(d){return d.amount/(d.amount*0.01);}).strength(1))
+            .force("charge", d3.forceManyBody())
+            .force("center", d3.forceCenter(width / 2, height / 2));
+
+    
+        function update(links, nodes) {
+            link = svg.selectAll(".link")
+                .data(links)
+                .enter()
+                .append("line")
+                .attr("class", "link")
+                .attr('marker-end','url(#arrowhead)')
+
+            link.append("title")
+                .text(function (d) {return d.type;});
+
+            edgepaths = svg.selectAll(".edgepath")
+                .data(links)
+                .enter()
+                .append('path')
+                .attrs({
+                    'class': 'edgepath',
+                    'fill-opacity': 0,
+                    'stroke-opacity': 0,
+                    'id': function (d, i) {return 'edgepath' + i}
+                })
+                .style("pointer-events", "none");
+
+            edgelabels = svg.selectAll(".edgelabel")
+                .data(links)
+                .enter()
+                .append('text')
+                .style("pointer-events", "none")
+                .attrs({
+                    'class': 'edgelabel',
+                    'id': function (d, i) {return 'edgelabel' + i},
+                    'font-size': 10,
+                    'fill': '#aaa'
+                });
+
+            edgelabels.append('textPath')
+                .attr('xlink:href', function (d, i) {return '#edgepath' + i})
+                .style("text-anchor", "middle")
+                .style("pointer-events", "none")
+                .attr("startOffset", "50%")
+                .text(function (d) {return d.amount});
+
+            node = svg.selectAll(".node")
+                .data(nodes)
+                .enter()
+                .append("g")
+                .attr("class", "node")
+                .call(d3.drag()
+                        .on("start", dragstarted)
+                        .on("drag", dragged)
+                        //.on("end", dragended)
+                );
+
+            node.append("circle")
+                .attr("r", 10)
+                .style("fill", function (d, i) {return colors(i);})
+
+            node.append("title")
+                .text(function (d) {return d.id;});
+
+            node.append("text")
+                .attr("dy", -15)
+                .text(function (d) {return d.name;});
+
+            simulation
+                .nodes(nodes)
+                .on("tick", ticked);
+
+            simulation.force("link")
+                .links(links);
+        }
+
+        function ticked() {
+            link
+                .attr("x1", function (d) {return d.source.x;})
+                .attr("y1", function (d) {return d.source.y;})
+                .attr("x2", function (d) {return d.target.x;})
+                .attr("y2", function (d) {return d.target.y;});
+
+            node
+                .attr("transform", function (d) {return "translate(" + d.x + ", " + d.y + ")";});
+
+            edgepaths.attr('d', function (d) {
+                return 'M ' + d.source.x + ' ' + d.source.y + ' L ' + d.target.x + ' ' + d.target.y;
+            });
+
+            edgelabels.attr('transform', function (d) {
+                if (d.target.x < d.source.x) {
+                    var bbox = this.getBBox();
+
+                    rx = bbox.x + bbox.width / 2;
+                    ry = bbox.y + bbox.height / 2;
+                    return 'rotate(180 ' + rx + ' ' + ry + ')';
+                }
+                else {
+                    return 'rotate(0)';
+                }
+            });
+        }
+        update(dataset.transfers, dataset.transferNodes);
+
+            function dragstarted(d) {
+                if (!d3.event.active) simulation.alphaTarget(0.3).restart()
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+        function dragged(d) {
+            d.fx = d3.event.x;
+            d.fy = d3.event.y;
+        }
+    }
+
+    getProcessedBlocks();
+    getAddressInfo();
+    getTokenHolders();
+    getTokenTransfers();
+    setInterval(()=> getProcessedBlocks(), 10000);    
+    setInterval(()=> getTokenHolders(), 10000);
+    setInterval(()=> getTokenTransfers(), 10000);
+    setInterval(()=> checkIfSnapshotIsRunning(), 1000);
+    setInterval(()=> getBlockCount(), 1000);
+</script>
