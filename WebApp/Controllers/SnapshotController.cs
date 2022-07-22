@@ -47,8 +47,23 @@ namespace WebApp.Controllers
 
         public async Task<AddressInfo> GetAddressInfo(string address)
         {
-           
-            return new AddressInfo() { IsAddress = false, IsContract = false, IsToken = false };
+            bool isContract = false;
+            bool isToken = false;
+            var isValidAddress = _addressUtils.IsValidAddress(address);
+            if (isValidAddress)
+            {
+                isContract = await _addressUtils.IsContractAddress(address);
+                if (isContract)
+                {
+                    isToken = await _addressUtils.IsTokenAddress(address);
+                }
+            }
+            return new AddressInfo()
+            {
+                IsAddress = isValidAddress,
+                IsContract = isContract,
+                IsToken = isToken
+            };
         }
 
         public bool IsSnapshotRunning()
