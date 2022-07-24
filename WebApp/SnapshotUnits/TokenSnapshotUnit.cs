@@ -74,6 +74,7 @@ namespace WebApp.SnapshotUnits
             {
                 var snapshotLog = new SnapshotLog();
                 snapshotLog.From(log.Log, "Transfer");
+                snapshotLog.Data = JsonSerializer.Serialize(log);
                 transaction.Logs.Add(snapshotLog);
             }
         }
